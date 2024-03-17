@@ -9,6 +9,7 @@ app.use(
     origin: "*",
   })
 );
+const port = 5000;
 app.set("port", 5000);
 app.use(express.json());
 
@@ -18,6 +19,7 @@ const PAX8_API_URL = "https://api.pax8.com/v1";
 
 app.get("/products", async (req, res) => {
   try {
+    console.log("Sddf");
     const { data } = await axios.post(`${PAX8_API_URL}/token`, {
       client_id: "eRRHW7PA1sSiDEceTDYVpz7GSJTJPPQn",
       client_secret:
@@ -41,7 +43,9 @@ app.get("/products", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
-
-app.listen(() => {
+app.get("/", (req, res) => {
+  res.send("Hello World!");
+});
+app.listen(port, () => {
   console.log("working the shell");
 });
