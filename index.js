@@ -46,36 +46,6 @@ const PAX8_API_URL = "https://api.pax8.com/v1";
 
 app.get("/products", async (req, res) => {
   const { page } = req.query;
-  try {
-    console.log("Sddf");
-    const { data } = await axios.post(`${PAX8_API_URL}/token`, {
-      client_id: "eRRHW7PA1sSiDEceTDYVpz7GSJTJPPQn",
-      client_secret:
-        "wsMSAPVJ3LcyraUH6weKMTIsngdjInxXFHxkPJn732h2v1NRlyhLmeaMGjQYIN4q",
-      audience: "api://p8p.client",
-      grant_type: "client_credentials",
-    });
-
-    const accessToken = data.access_token;
-
-    const response = await axios.get(
-      `https://api.pax8.com/v1/products?page=${page}`,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      }
-    );
-
-    console.log("Response from PAX8 API:", response.data);
-    res.json(response.data);
-  } catch (error) {
-    console.error("Error fetching data from PAX8 API:", error.message);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-app.get("/products/", async (req, res) => {
-  const { page } = req.query;
 
   async function getAccessToken() {
     try {
