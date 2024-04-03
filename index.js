@@ -1,144 +1,222 @@
 const express = require("express");
-const cors = require("cors");
+const bodyParser = require("body-parser");
+const passport = require("passport");
+const FacebookStrategy = require("passport-facebook").Strategy;
+const session = require("express-session");
 const app = express();
+const PORT = 5000;
 
-require("dotenv").config();
+const database = require("./database/database");
+database();
+app.use("/", (req, res) => {
+  res.send("hellw world");
+});
+// Configure view engine and views directory
+app.set("view engine", "ejs");
+app.set("views", __dirname + "/views");
 
+// Middleware to parse JSON bodies
+app.use(bodyParser.json());
 app.use(
-  cors({
-    origin: "*",
+  session({
+    secret: "your_secret_key", // Specify a secret for session management
+    resave: false,
+    saveUninitialized: false,
   })
 );
-const port = process.env.PORT || 8000;
 
-app.use(express.json());
-
-const axios = require("axios");
-
-const PAX8_API_URL = "https://api.pax8.com/v1";
-
-// app.get("/products", async (req, res) => {
-//   try {
-//     console.log("Sddf");
-//     const { data } = await axios.post(`${PAX8_API_URL}/token`, {
-//       client_id: "eRRHW7PA1sSiDEceTDYVpz7GSJTJPPQn",
-//       client_secret:
-//         "wsMSAPVJ3LcyraUH6weKMTIsngdjInxXFHxkPJn732h2v1NRlyhLmeaMGjQYIN4q",
-//       audience: "api://p8p.client",
-//       grant_type: "client_credentials",
-//     });
-
-//     const accessToken = data.access_token;
-
-//     const response = await axios.get(`${PAX8_API_URL}/products`, {
-//       headers: {
-//         Authorization: `Bearer ${accessToken}`,
-//       },
-//     });
-
-//     console.log("Response from PAX8 API:", response.data);
-//     res.json(response.data);
-//   } catch (error) {
-//     console.error("Error fetching data from PAX8 API:", error.message);
-//     res.status(500).json({ error: "Internal server error" });
-//   }
-// });
-
-app.get("/products", async (req, res) => {
-  const { page } = req.query;
-
-  async function getAccessToken() {
-    try {
-      const response = await axios.post("https://api.pax8.com/v1/token", {
-        client_id: "eRRHW7PA1sSiDEceTDYVpz7GSJTJPPQn",
-        client_secret:
-          "wsMSAPVJ3LcyraUH6weKMTIsngdjInxXFHxkPJn732h2v1NRlyhLmeaMGjQYIN4q",
-        audience: "api://p8p.client",
-        grant_type: "client_credentials",
-      });
-
-      return response.data.access_token;
-    } catch (error) {
-      console.error("Error fetching access token:", error);
-      throw error;
+// Initialize Passport
+app.use(passport.initialize());
+app.use(passport.session());
+const uri = "mongodb://localhost:27017";
+const client = new MongoClient(uri);
+const { Facebook } = require("fb");
+const fb = new Facebook({ version: "v12.0" });
+const FB_APP_ID = "350708251284818";
+const FB_APP_SECRET = "9377f8aeecebf304c6f61c1678fbb6c1";
+const FB_REDIRECT_URI = "http://localhost:5000/auth/callback";
+const clientID = "350708251284818";
+const clientSecret = "9377f8aeecebf304c6f61c1678fbb6c1";
+// Passport Facebook Strategy
+passport.use(
+  new FacebookStrategy(
+    {
+      clientID: "350708251284818",
+      clientSecret: "9377f8aeecebf304c6f61c1678fbb6c1",
+      callbackURL: "http://localhost:5000/auth/facebook/callback",
+      profileFields: ["id", "displayName", "email", "manage_pages"],
+    },
+    function (accessToken, refreshToken, profile, done) {
+      // This function is called after successful authentication
+      // Here, you can handle user authentication or retrieve user data
+      return done(null, profile);
     }
+  )
+);
+
+app.get(
+  "/auth/facebook",
+  passport.authenticate("facebook", {
+    scope: ["manage_pages", "read_page_mailboxes"],
+  })
+);
+
+app.get(
+  "/auth/facebook/callback",
+  passport.authenticate("facebook", { failureRedirect: "/login" }),
+  function (req, res) {
+    // Successful authentication, redirect or respond as needed
+    console.log("success", req);
+    res.redirect("/messages");
   }
+);
 
-  // Function to fetch products
-  async function getAllProducts(accessToken) {
-    try {
-      const response = await axios.get(
-        `https://api.pax8.com/v1/products?page=${page}`,
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            Accept: "application/json",
-          },
-        }
-      );
+app.get("/login", async (req, res) => {
+  const response = await axios.get(
+    `https://graph.facebook.com/oauth/access_token?client_id=${clientID}&client_secret=${clientSecret}&grant_type=client_credentials`
+  );
+  console.log("Access Token Response:", response.data);
+  res.render("login");
+});
 
-      return response.data;
-    } catch (error) {
-      console.error("Error fetching products:", error);
-      throw error;
-    }
+app.get("/auth/initiate", (req, res) => {
+  const authUrl = fb.getLoginUrl({
+    client_id: FB_APP_ID,
+    redirect_uri: FB_REDIRECT_URI,
+    scope: "manage_pages",
+  });
+  res.redirect(authUrl);
+});
+
+app.get("/auth/callback", async (req, res) => {
+  const { code } = req.query;
+  try {
+    const { access_token } = await fb.api("oauth/access_token", {
+      client_id: FB_APP_ID,
+      client_secret: FB_APP_SECRET,
+      redirect_uri: FB_REDIRECT_URI,
+      code,
+    });
+    const userInfo = await fb.api("/me", {
+      access_token: access_token,
+    });
+    // const userId = userInfo.id;
+    // const userPagesResponse = await fb.api(`/${userId}/accounts`, {
+    //   access_token: access_token,
+    // });
+    return {
+      success: true,
+      message: "Here is user Info",
+      data: userInfo,
+      redirectUrl: "/specific-page",
+    };
+  } catch (error) {
+    console.error("Error saving authentication data:", error);
+    // Return a failure message and redirect user
+    return {
+      success: false,
+      message: "Failed to save authentication data",
+      redirectUrl: "/error-page",
+    };
   }
+});
 
-  async function getProductPricing(productId, accessToken) {
-    try {
-      const response = await axios.get(
-        `https://api.pax8.com/v1/products/${productId}/pricing`,
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            Accept: "application/json",
-          },
-        }
-      );
-
-      return response.data;
-    } catch (error) {
-      console.error(
-        `Error fetching pricing for product ID ${productId}:`,
-        error
-      );
-      throw error;
-    }
-  }
+app.post("/auth/store", async (req, res) => {
+  const { userId, accessToken, otherData } = req.body;
 
   try {
-    const accessToken = await getAccessToken();
-    const productsResponse = await getAllProducts(accessToken);
+    await client.connect();
 
-    // Extract product IDs
-    const productIds = productsResponse.content.map((product) => product.id);
+    const database = client.db("your-database-name");
+    const collection = database.collection("authenticationData");
 
-    // Fetch pricing for each product
-    const productDetailsPromises = productIds.map((productId) =>
-      getProductPricing(productId, accessToken)
-    );
+    const result = await collection.insertOne({
+      userId: userId,
+      accessToken: accessToken,
+      otherData: otherData,
+    });
 
-    // Wait for all pricing requests to resolve
-    const productDetails = await Promise.all(productDetailsPromises);
-
-    // Combine product details and pricing
-    const productsWithPricing = productsResponse.content.map(
-      (product, index) => ({
-        ...product,
-        pricing: productDetails[index],
-      })
-    );
-    const alldone = { content: productsWithPricing };
-    res.json(alldone);
+    console.log("Authentication data saved successfully:", result);
+    return {
+      success: true,
+      message: "Authentication data saved successfully",
+    };
   } catch (error) {
-    console.error("Error:", error);
-    res.status(500).json({ error: "Internal Server Error" });
+    console.error("Error saving authentication data:", error);
+    return { success: false, message: "Failed to save authentication data" };
+  } finally {
+    await client.close();
   }
 });
 
-app.get("/", (req, res) => {
-  res.send("Hello World!");
+app.post("/auth/refresh", async (req, res) => {
+  const { accessToken } = req.body;
+  const response = await axios.get(`https://graph.facebook.com/debug_token`, {
+    params: {
+      input_token: accessToken,
+      access_token: "your-app-access-token",
+    },
+  });
+
+  if (response.data.data.is_valid) {
+    console.log("Access token is valid");
+  } else {
+    res.redirect("/auth/initiate");
+  }
+  res.status(200).send("Authentication data refreshed successfully");
 });
-app.listen(port, () => {
-  console.log("working the shell");
+
+app.delete("/auth/remove", async (req, res) => {
+  const { userId } = req.body;
+
+  try {
+    await client.connect();
+
+    const database = client.db("your-database-name");
+    const collection = database.collection("authenticationData");
+
+    const result = await collection.deleteOne({ userId: userId });
+
+    if (result.deletedCount === 1) {
+      res.json({
+        success: true,
+        message: "Authentication data removed successfully",
+      });
+    } else {
+      res.status(404).json({
+        success: false,
+        message: "User authentication data not found",
+      });
+    }
+  } catch (error) {
+    console.error("Error removing authentication data:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to remove authentication data",
+    });
+  } finally {
+    await client.close();
+  }
+});
+app.post("/auth/reverify", async (req, res) => {
+  const { userId } = req.body;
+
+  try {
+    const authUrl = `https://www.facebook.com/v12.0/dialog/oauth?client_id=${FB_APP_ID}&redirect_uri=${encodeURIComponent(
+      FB_REDIRECT_URI
+    )}&scope=manage_pages&auth_type=reauthenticate&state=${userId}`;
+
+    res.json({ success: true, redirectUrl: authUrl });
+  } catch (error) {
+    console.error("Error triggering permission re-verification:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to trigger permission re-verification",
+    });
+  }
+});
+
+// Start the server
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });
